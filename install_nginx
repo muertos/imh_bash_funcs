@@ -1,0 +1,43 @@
+function install_nginx() {
+if yum -y install epel-release imh-python imh-ngxconf imh-ngxutil imh-cpanel-cache-manager imh-fpmstatus; then
+
+# add X-Real-IP to Apache's log entries    
+if ! grep -q "X-Real-IP" /etc/apache2/conf.d/includes/pre_virtualhost_global.conf; then
+cat << EOF >> /etc/apache2/conf.d/includes/pre_virtualhost_global.conf
+
+<IfModule log_config_module>
+  LogFormat "%{X-Real-IP}i %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\"" combined
+</IfModule>
+<IfModule log_config_module>
+  ErrorLogFormat "[%{u}t] [%-m:%l] [pid %P:tid %T] %7F: %E: [client\ %{X-Real-IP}i] %M% ,\ referer\ %{Referer}i"
+</IfModule>
+EOF
+else
+  echo "/etc/apache2/conf.d/includes/pre_virtualhost_global.conf contains X-Real-IP, inspect this file manually to ensure Apache log format is setup appropriately"
+fi
+
+if ! grep -q "RemoteIPHeader X-Forwarded-For" /etc/apache2/conf.d/includes/post_virtualhost_global.conf; then
+cat << EOF >> /etc/apache2/conf.d/includes/post_virtualhost_global.conf                     
+                                                                                            
+<IfModule mod_remoteip.c>                                                                   
+  RemoteIPHeader X-Forwarded-For                                                            
+$(/scripts/ipusage | awk '{print $1}' | awk '{ print "  RemoteIPInternalProxy " $1 }')      
+</IfModule>                                                                                 
+EOF
+else
+  echo "/etc/apache2/conf.d/includes/post_virtualhost_global.conf contains \"RemoteIPHeader X-Forwarded-For\", inspect this file manually" 
+fi
+
+  sed -i 's/apache_port=.*/apache_port=0.0.0.0:8080/' /var/cpanel/cpanel.config
+  sed -i 's/apache_ssl_port=.*/apache_ssl_port=0.0.0.0:8443/' /var/cpanel/cpanel.config
+  sed -i '/accel_static_content/s/true/false/' /home*/*/.imh/nginx/*.yml
+  #sed -i '/enable_fpm/s/true/false/' /opt/ngxconf/config.yaml
+  /scripts/rebuildhttpdconf && httpd -t && /scripts/restartsrv_apache && /scripts/restartsrv_apache_php_fpm
+  ngxconf -Rrd
+  systemctl start nginx || service nginx start
+  netstat -nlp | grep -P 'nginx|httpd'
+else
+  echo "looks like yum failed, exiting"
+  exit 1
+fi
+}
