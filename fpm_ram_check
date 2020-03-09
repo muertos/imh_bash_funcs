@@ -1,0 +1,8 @@
+fpm_ram_check() {
+  # checks for total possible RAM usage by PHP-FPM
+  total_fpm_children=$(grep max_children /opt/cpanel/*/root/etc/php-fpm.d/*.conf | awk '{sum+=$3} END {print sum}')
+  fpm_avg_ram_usage=$(ps --no-headers -o "rss,cmd" -C php-fpm | awk '{ sum+=$1 } END { printf (sum/NR/1024) }')
+  total=$(echo "${total_fpm_children}*${fpm_avg_ram_usage}" | bc)
+  echo "Total possible PHP-FPM RAM usage: "
+  echo "${total}MB" 
+}
